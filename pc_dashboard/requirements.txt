@@ -1,0 +1,16 @@
+# Requirements pour PC Dashboard - Station Sol
+# Python 3.7+
+
+# Traitement d'image et affichage
+opencv-python>=4.8.0
+numpy>=1.21.0
+
+# Intelligence Artificielle
+# Segmentation de route (OpenVINO)
+openvino>=2023.0.0
+openvino-dev>=2023.0.0
+
+# Détection d'objets (YOLOv8)
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
