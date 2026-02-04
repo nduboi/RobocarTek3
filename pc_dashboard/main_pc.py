@@ -24,6 +24,7 @@ from video_receiver import VideoReceiver
 from lidar_receiver import LidarReceiver
 from controller_sender import ControllerSender
 from ai_inference import AIInference
+from autonomous_driver import AutonomousDriver
 
 
 class RobocarDashboard:
@@ -60,6 +61,10 @@ class RobocarDashboard:
                 logging.error(f"Erreur initialisation IA: {e}")
                 self.enable_ai = False
         
+        # Module conduite autonome
+        self.autonomous = AutonomousDriver(ai_inference=self.ai_inference)
+        self._last_ai_info = {}
+
         # État de l'interface
         self.running = False
         
@@ -180,7 +185,8 @@ class RobocarDashboard:
             self.throttle = 0.0
             self.steering = 0.0
             self.controller_sender.send_command("emergency_stop")
-            self.logger.warning("⚠️ ARRÊT D'URGENCE")
+            self.autonomous.emergency_stop()
+            self.logger.warning("ARRET D'URGENCE")
         
         elif key == ord('x') or key == ord('X'):
             # Recentrer (neutre)
@@ -224,10 +230,19 @@ class RobocarDashboard:
             # Toggle mode masque IA
             if self.enable_ai and self.ai_inference is not None:
                 mask_mode = self.ai_inference.toggle_mask_mode()
-                self.logger.info(f"🎭 Mode masque: {'ACTIVÉ' if mask_mode else 'DÉSACTIVÉ'}")
-        
-        # Mettre à jour le contrôle
-        self.controller_sender.set_control(self.throttle, self.steering)
+                self.logger.info(f"Mode masque: {'ACTIVE' if mask_mode else 'DESACTIVE'}")
+
+        elif key == ord('a') or key == ord('A'):
+            # Toggle mode autonome
+            active = self.autonomous.toggle()
+            self.logger.info(f"Mode autonome: {'ACTIVE' if active else 'DESACTIVE'}")
+            if not active:
+                self.throttle = 0.0
+                self.steering = 0.0
+
+        # Mettre à jour le contrôle (sauf si autonome, gere dans run())
+        if not self.autonomous.is_active():
+            self.controller_sender.set_control(self.throttle, self.steering)
     
     def _render_video_frame(self, frame: Optional[np.ndarray]) -> np.ndarray:
         """
@@ -257,6 +272,7 @@ class RobocarDashboard:
                 display_frame, ai_info = self.ai_inference.process_frame(display_frame)
             except Exception as e:
                 self.logger.error(f"Erreur inférence IA: {e}")
+        self._last_ai_info = ai_info
         
         # Overlay: État du contrôle
         overlay_h = 120
@@ -324,8 +340,17 @@ class RobocarDashboard:
                            (display_frame.shape[1] - 150, y_offset),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 200, 255), 1)
         
+        # Statut conduite autonome
+        if self.autonomous.is_active():
+            auto_text = f"AUTO: {self.autonomous.get_status_text()}"
+            cv2.putText(overlay, auto_text, (350, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        else:
+            cv2.putText(overlay, "MANUAL", (350, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
         # Statut connexion
-        video_status = "VIDEO: ✓" if self.video_receiver.is_connected() else "VIDEO: ✗"
+        video_status = "VIDEO: OK" if self.video_receiver.is_connected() else "VIDEO: --"
         color_status = (0, 255, 0) if self.video_receiver.is_connected() else (0, 0, 255)
         cv2.putText(overlay, video_status, (display_frame.shape[1] - 150, 110),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_status, 1)
@@ -433,6 +458,7 @@ class RobocarDashboard:
             "1-4: Sons",
             "+/-: Vitesse max",
             "M: Mode masque IA",
+            "A: Mode autonome",
             "H: Aide",
             "ESC/Echap: Quitter"
         ]
@@ -482,6 +508,15 @@ class RobocarDashboard:
                 lidar_view = self._render_lidar_view(lidar_points)
                 cv2.imshow(self.window_lidar, lidar_view)
                 
+                # === CONDUITE AUTONOME ===
+                if self.autonomous.is_active():
+                    result = self.autonomous.update(
+                        lidar_points, self._last_ai_info)
+                    if result is not None:
+                        self.throttle, self.steering = result
+                        self.controller_sender.set_control(
+                            self.throttle, self.steering)
+
                 # === TRAITEMENT CLAVIER ===
                 key = cv2.waitKey(1) & 0xFF
                 

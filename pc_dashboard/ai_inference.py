@@ -64,6 +64,9 @@ class AIInference:
         
         # Marquages détectés (pour affichage)
         self.detected_markings = []
+
+        # Dernier masque de segmentation brut (pour path_follower)
+        self._last_road_mask = None
         
         # Charger modèles
         if self.enable_segmentation:
@@ -155,6 +158,7 @@ class AIInference:
                 road_mask = self._segment_road(frame)
                 if road_mask is not None:
                     info['road_detected'] = True
+            self._last_road_mask = road_mask
             
             # Détection d'objets
             detections = []
@@ -423,9 +427,10 @@ class AIInference:
         overlay = frame.copy()
         
         # Colorier la route en bleu
-        overlay[mask > 0] = overlay[mask > 0] * 0.6 + np.array([100, 100, 255]) * 0.4
-        
-        return overlay.astype(np.uint8)
+        road_pixels = overlay[mask > 0].astype(np.float32)
+        overlay[mask > 0] = (road_pixels * 0.6 + np.array([100, 100, 255], dtype=np.float32) * 0.4).astype(np.uint8)
+
+        return overlay
     
     def _draw_detections(self, frame: np.ndarray, detections: List[Dict]) -> np.ndarray:
         """Dessine les détections YOLOv8"""
@@ -465,7 +470,7 @@ class AIInference:
             
             # Rectangle vert semi-transparent
             sub_img = overlay[y1:y2, x1:x2]
-            green_rect = np.ones(sub_img.shape, dtype=np.uint8) * np.array([0, 255, 0])
+            green_rect = np.ones(sub_img.shape, dtype=np.uint8) * np.array([0, 255, 0], dtype=np.uint8)
             overlay[y1:y2, x1:x2] = cv2.addWeighted(sub_img, 0.6, green_rect, 0.4, 0)
             
             # Bordure
@@ -491,6 +496,10 @@ class AIInference:
         """Bascule le mode masque"""
         self.mask_mode = not self.mask_mode
         return self.mask_mode
+
+    def get_last_road_mask(self) -> Optional[np.ndarray]:
+        """Retourne le dernier masque de segmentation route brut."""
+        return self._last_road_mask
     
     def _render_mask_mode(self, frame: np.ndarray, road_mask: Optional[np.ndarray],
                          detections: List[Dict], parking_spots: List[Dict]) -> np.ndarray:
