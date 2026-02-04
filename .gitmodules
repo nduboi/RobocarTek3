@@ -1,3 +1,6 @@
 [submodule "camera"]
 	path = camera
 	url = git@github.com:My-Epitech-Organisation/robocar_camera-streaming.git
+[submodule "lidar"]
+	path = lidar
+	url = git@github.com:My-Epitech-Organisation/robocar_lidar.git
