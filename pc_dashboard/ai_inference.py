@@ -62,6 +62,9 @@ class AIInference:
         # Mode d'affichage
         self.mask_mode = False
         
+        # Marquages détectés (pour affichage)
+        self.detected_markings = []
+        
         # Charger modèles
         if self.enable_segmentation:
             self._load_road_segmentation()
@@ -286,18 +289,24 @@ class AIInference:
         try:
             h, w = frame.shape[:2]
             
-            # Zone d'intérêt: partie basse de l'image (60% à 100% hauteur)
-            roi_y_start = int(h * 0.6)
+            # Zone d'intérêt: partie basse de l'image (50% à 100% hauteur)
+            roi_y_start = int(h * 0.5)
             roi = frame[roi_y_start:, :]
             
             # Convertir en niveaux de gris
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
             
+            # Détecter les marquages blancs (bandes)
+            white_mask = cv2.inRange(gray, 200, 255)
+            
             # Détecter les bords (marquages au sol)
             edges = cv2.Canny(gray, 50, 150)
             
+            # Combiner marquages blancs et edges
+            combined = cv2.bitwise_or(white_mask, edges)
+            
             # Détecter les lignes (marquages de parking)
-            lines = cv2.HoughLinesP(edges, 1, np.pi/180, 50, minLineLength=30, maxLineGap=10)
+            lines = cv2.HoughLinesP(combined, 1, np.pi/180, 40, minLineLength=25, maxLineGap=15)
             
             # Zones où il y a des véhicules
             vehicle_zones = []
@@ -308,28 +317,44 @@ class AIInference:
                     if y2 > roi_y_start:
                         vehicle_zones.append((x1, max(0, y1 - roi_y_start), x2, y2 - roi_y_start))
             
-            if lines is not None:
-                # Regrouper les lignes verticales proches (lignes de délimitation)
+            # Stocker les marquages détectés pour l'affichage avec leur offset Y
+            self.detected_markings = lines if lines is not None else []
+            self.detected_markings_offset = roi_y_start
+            
+            if lines is not None and len(lines) >= 2:
+                # Regrouper les lignes verticales/quasi-verticales proches
                 vertical_lines = []
                 for line in lines:
                     x1, y1, x2, y2 = line[0]
                     angle = np.abs(np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi)
-                    # Lignes verticales (60-120 degrés)
-                    if 60 < angle < 120:
+                    # Lignes quasi-verticales (50-130 degrés)
+                    if 50 < angle < 130:
                         x_center = (x1 + x2) // 2
                         vertical_lines.append(x_center)
                 
-                # Trier et détecter des paires de lignes (délimitant une place)
+                # Trier et regrouper les lignes proches
                 if len(vertical_lines) >= 2:
                     vertical_lines = sorted(vertical_lines)
                     
-                    for i in range(len(vertical_lines) - 1):
-                        x1 = vertical_lines[i]
-                        x2 = vertical_lines[i + 1]
+                    # Fusionner les lignes proches (même délimitation)
+                    merged_lines = []
+                    i = 0
+                    while i < len(vertical_lines):
+                        cluster = [vertical_lines[i]]
+                        while i + 1 < len(vertical_lines) and vertical_lines[i + 1] - vertical_lines[i] < 20:
+                            i += 1
+                            cluster.append(vertical_lines[i])
+                        merged_lines.append(int(np.mean(cluster)))
+                        i += 1
+                    
+                    # Détecter des paires de lignes (délimitant une place)
+                    for i in range(len(merged_lines) - 1):
+                        x1 = merged_lines[i]
+                        x2 = merged_lines[i + 1]
                         
-                        # Largeur de place typique: 2m-3m = 80-150 pixels à ~5m
+                        # Largeur de place typique: 2m-3m = 70-200 pixels
                         width = x2 - x1
-                        if 80 < width < 200:
+                        if 70 < width < 220:
                             # Vérifier qu'il n'y a pas de véhicule
                             occupied = False
                             y1 = 0
@@ -346,39 +371,48 @@ class AIInference:
                                 parking_spots.append({
                                     'bbox': (x1, roi_y_start + y1, x2, roi_y_start + y2),
                                     'area': width * (y2 - y1),
-                                    'available': True
+                                    'available': True,
+                                    'confidence': 0.8
                                 })
             
-            # Méthode alternative: détecter des zones vides rectangulaires
-            if len(parking_spots) == 0:
-                # Appliquer un seuillage adaptatif pour détecter les marquages
+            # Méthode alternative: détecter zones vides rectangulaires sur zones grises
+            if len(parking_spots) < 2:
+                # Appliquer un seuillage pour détecter les zones sombres (absence de véhicule)
                 thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                              cv2.THRESH_BINARY, 11, 2)
+                                              cv2.THRESH_BINARY_INV, 15, 5)
+                
+                # Morphologie
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 10))
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
                 
                 # Trouver des rectangles de taille parking
                 contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 
                 for contour in contours:
                     area = cv2.contourArea(contour)
-                    if 3000 < area < 30000:
+                    if 2000 < area < 25000:
                         x, y, w_rect, h_rect = cv2.boundingRect(contour)
                         
-                        # Aspect ratio parking
-                        if 0.5 < w_rect/h_rect < 2.5:
+                        # Aspect ratio parking (longer que haut, ou carré)
+                        aspect = w_rect / h_rect if h_rect > 0 else 0
+                        if 0.4 < aspect < 3.0:
                             occupied = False
                             for vx1, vy1, vx2, vy2 in vehicle_zones:
                                 if not (x + w_rect < vx1 or x > vx2 or y + h_rect < vy1 or y > vy2):
                                     occupied = True
                                     break
                             
-                            if not occupied:
+                            if not occupied and len(parking_spots) < 10:
                                 parking_spots.append({
                                     'bbox': (x, roi_y_start + y, x + w_rect, roi_y_start + y + h_rect),
                                     'area': area,
-                                    'available': True
+                                    'available': True,
+                                    'confidence': 0.6
                                 })
             
-            return parking_spots[:10]  # Max 10 places
+            # Trier par confiance et limiter
+            parking_spots = sorted(parking_spots, key=lambda x: x.get('confidence', 0), reverse=True)[:10]
+            return parking_spots
             
         except Exception as e:
             self.logger.error(f"Erreur détection parking: {e}")
@@ -470,6 +504,14 @@ class AIInference:
         if road_mask is not None:
             mask_view[road_mask > 0] = [255, 150, 0]  # Bleu/cyan
         
+        # Marquages blancs en JAUNE
+        if self.detected_markings is not None and len(self.detected_markings) > 0:
+            y_offset = getattr(self, 'detected_markings_offset', 0)
+            for line in self.detected_markings:
+                x1, y1, x2, y2 = line[0]
+                # Ajuster les coordonnées Y avec l'offset du ROI
+                cv2.line(mask_view, (x1, y1 + y_offset), (x2, y2 + y_offset), (0, 255, 255), 3)  # Jaune vif
+        
         # Objets détectés
         for det in detections:
             x1, y1, x2, y2 = det['bbox']
@@ -504,5 +546,26 @@ class AIInference:
         # Texte mode masque
         cv2.putText(mask_view, "MODE MASQUE (M pour quitter)", (10, 30),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        
+        # Légende des couleurs
+        legend_y = h - 80
+        cv2.putText(mask_view, "LEGENDE:", (10, legend_y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+        
+        cv2.rectangle(mask_view, (15, legend_y + 20), (35, legend_y + 35), (255, 150, 0), -1)
+        cv2.putText(mask_view, "Route", (45, legend_y + 32),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        
+        cv2.line(mask_view, (15, legend_y + 50), (35, legend_y + 50), (0, 255, 255), 3)
+        cv2.putText(mask_view, "Marquages", (45, legend_y + 55),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        
+        cv2.rectangle(mask_view, (200, legend_y + 20), (220, legend_y + 35), (0, 255, 0), -1)
+        cv2.putText(mask_view, "Parking", (230, legend_y + 32),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        
+        cv2.rectangle(mask_view, (320, legend_y + 20), (340, legend_y + 35), (0, 100, 255), -1)
+        cv2.putText(mask_view, "Vehicules", (350, legend_y + 32),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         
         return mask_view
