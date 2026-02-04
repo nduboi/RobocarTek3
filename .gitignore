@@ -1,2 +1,40 @@
 venv*
-*__py_cache__/*
+*__py_cache__/*# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+logs/
+*.jsonl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# System
+.DS_Store
+Thumbs.db
+
+# Installation
+install.log
+
+# Temporary
+*.tmp
+*.bak
+*.orig
+
+# personal notes
+my_docs
