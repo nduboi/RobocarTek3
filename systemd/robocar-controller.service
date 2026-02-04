@@ -1,0 +1,43 @@
+[Unit]
+Description=Robocar Controller (VESC Motor Control)
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=USER_PLACEHOLDER
+Group=USER_PLACEHOLDER
+WorkingDirectory=INSTALL_DIR_PLACEHOLDER/controller
+
+# Commande de démarrage
+ExecStart=VENV_DIR_PLACEHOLDER/bin/python server/robocar_server.py --config config/server_config.yaml
+
+# Politique de redémarrage
+Restart=always
+RestartSec=5
+StartLimitInterval=600
+StartLimitBurst=5
+
+# Timeout
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=robocar-controller
+
+# Variables d'environnement
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONPATH=INSTALL_DIR_PLACEHOLDER/controller"
+
+# Sécurité et limites
+LimitNOFILE=4096
+Nice=0
+
+# Dépendances runtime
+# Nécessite l'accès au port série VESC
+SupplementaryGroups=dialout
+
+[Install]
+WantedBy=multi-user.target

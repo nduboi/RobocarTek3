@@ -1,0 +1,44 @@
+[Unit]
+Description=Robocar Lidar (LD19 Data Publisher)
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=USER_PLACEHOLDER
+Group=USER_PLACEHOLDER
+WorkingDirectory=INSTALL_DIR_PLACEHOLDER/lidar
+
+# Commande de démarrage
+# Arguments: --port (port UDP pour broadcast), --serial (port série du lidar)
+ExecStart=VENV_DIR_PLACEHOLDER/bin/python lidar_radar.py --port 15975 --serial /dev/ttyUSB0
+
+# Politique de redémarrage
+Restart=always
+RestartSec=5
+StartLimitInterval=600
+StartLimitBurst=5
+
+# Timeout
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=robocar-lidar
+
+# Variables d'environnement
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONPATH=INSTALL_DIR_PLACEHOLDER/lidar"
+
+# Sécurité et limites
+LimitNOFILE=4096
+Nice=0
+
+# Dépendances runtime
+# Nécessite l'accès au port série du lidar
+SupplementaryGroups=dialout
+
+[Install]
+WantedBy=multi-user.target

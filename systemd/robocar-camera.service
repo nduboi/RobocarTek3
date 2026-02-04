@@ -1,0 +1,44 @@
+[Unit]
+Description=Robocar Camera (OAK-D Video Sender)
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=USER_PLACEHOLDER
+Group=USER_PLACEHOLDER
+WorkingDirectory=INSTALL_DIR_PLACEHOLDER/camera
+
+# Commande de démarrage
+# Arguments: --host (adresse d'écoute), --port (port TCP pour envoi vidéo)
+ExecStart=VENV_DIR_PLACEHOLDER/bin/python video_sender.py --host 0.0.0.0 --port 4488
+
+# Politique de redémarrage
+Restart=always
+RestartSec=5
+StartLimitInterval=600
+StartLimitBurst=5
+
+# Timeout
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=robocar-camera
+
+# Variables d'environnement
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONPATH=INSTALL_DIR_PLACEHOLDER/camera"
+
+# Sécurité et limites
+LimitNOFILE=4096
+Nice=0
+
+# Dépendances runtime
+# Nécessite l'accès aux périphériques USB (OAK-D)
+SupplementaryGroups=plugdev video
+
+[Install]
+WantedBy=multi-user.target
