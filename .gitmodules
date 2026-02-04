@@ -4,3 +4,6 @@
 [submodule "lidar"]
 	path = lidar
 	url = git@github.com:My-Epitech-Organisation/robocar_lidar.git
+[submodule "controller"]
+	path = controller
+	url = git@github.com:My-Epitech-Organisation/gamepad2car.git
