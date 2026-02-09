@@ -36,12 +36,12 @@ class ParkingPlanner:
     MIN_CONFIDENCE = 50
 
     # Manoeuvre
-    ALONGSIDE_THROTTLE = 0.20
+    ALONGSIDE_THROTTLE = 0.10
     ALONGSIDE_DURATION = 1.5     # secondes
-    PARK_THROTTLE = 0.15
+    PARK_THROTTLE = 0.08
     TURN_STEERING = 0.9          # braquage quasi-max a droite
     TURN_DURATION = 2.0
-    STRAIGHTEN_THROTTLE = 0.10
+    STRAIGHTEN_THROTTLE = 0.05
     STRAIGHTEN_DURATION = 1.5
     ADJUST_DURATION = 1.0
 

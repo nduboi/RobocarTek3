@@ -18,8 +18,8 @@ class PathFollower:
     Pas de thread : appele une fois par frame.
     """
 
-    CRUISE_THROTTLE = 0.30
-    SEARCH_THROTTLE = 0.20
+    CRUISE_THROTTLE = 0.15
+    SEARCH_THROTTLE = 0.10
     MIN_ROAD_PIXELS = 100  # minimum de pixels route pour considerer la detection valide
 
     def __init__(self,
